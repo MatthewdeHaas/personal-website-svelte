@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "migrate": "tsx migrate.ts"
+    "migrate": "tsx migrate.ts",
+    "migrate:prod": "DATABASE_URL='postgres://postgres:password@64.23.231.122:5432/personal-site' tsx migrate.ts"
   },
   "dependencies": {
     "postgres": "^3.4.4",
