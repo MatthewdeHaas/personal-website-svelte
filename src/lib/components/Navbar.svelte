@@ -19,7 +19,7 @@
         day: "numeric",
       })}</span
     >
-    <h1 class="name">Matthew de Haas</h1>
+    <h1 class="name">Matthew deHaas</h1>
   </div>
   <nav>
     {#each links as link (link.href)}
