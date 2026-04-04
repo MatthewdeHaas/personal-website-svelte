@@ -11,8 +11,8 @@
       : data.assets.filter((a) => a.type === filter),
   );
 
-  const hasPhotos = data.assets.some((a) => a.type === "photo");
-  const hasVideos = data.assets.some((a) => a.type === "video");
+  let hasPhotos = $derived(data.assets.some((a) => a.type === "photo"));
+  let hasVideos = $derived(data.assets.some((a) => a.type === "video"));
 </script>
 
 <div class="max-w-2xl mx-auto">
@@ -26,14 +26,14 @@
     </a>
     <div class="flex items-baseline justify-between mt-2">
       <h2 class="font-display text-3xl font-bold text-stone-900">
-        {data.title}
+        {data.album.title}
       </h2>
       <span class="font-serif text-xs tracking-widest uppercase text-stone-400"
-        >{data.year}</span
+        >{data.album.year}</span
       >
     </div>
     <p class="font-serif text-sm text-stone-500 mt-1">
-      {data.description}
+      {data.album.description}
     </p>
   </div>
 
@@ -71,7 +71,9 @@
             controls
             preload="metadata"
             onplay={() => fetch(`/api/views/${asset.id}`, { method: "POST" })}
-          ></video>
+          >
+            <track kind="captions" />
+          </video>
         {/if}
 
         {#if asset.caption}
