@@ -34,16 +34,6 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}:latest
 
-      - name: Upload compose file
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ vars.DROPLET_IP }}
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: infra/docker-compose.prod.yaml
-          target: /app
-          strip_components: 1
-
       - name: Deploy to droplet
         uses: appleboy/ssh-action@v1
         with:
