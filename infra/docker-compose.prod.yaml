@@ -21,7 +21,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - /mnt/block-storage/pgdata:/var/lib/postgresql/data  # block storage volume
+      - /mnt/block-storage/pgdata:/var/lib/postgresql/data # block storage volume
     restart: unless-stopped
 
 volumes:

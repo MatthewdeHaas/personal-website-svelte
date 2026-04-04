@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports: ["3000:3000"]
-    volumes: ["./src:/app/src"]  # dev hot reload
+    volumes: ["./src:/app/src"] # dev hot reload
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/personal-website
   db:

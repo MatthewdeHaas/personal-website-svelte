@@ -1,4 +1,4 @@
-import { sql } from '$lib/db';
+import { sql } from "$lib/db";
 
 export const POST = async ({ params, locals }) => {
   await sql`

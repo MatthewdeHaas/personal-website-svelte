@@ -6,5 +6,5 @@
 <p>{data.meta.date}</p>
 
 <div class="prose">
-  <svelte:component this={data.content} />
+  <data.content />
 </div>
