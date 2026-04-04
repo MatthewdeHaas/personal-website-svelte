@@ -1,3 +1,9 @@
-# This is a test
+---
+title: Hello World
+date: 2026-01-01
+description: My first post.
+---
 
-Hello there!
+# Hello World
+
+This is a test post.
