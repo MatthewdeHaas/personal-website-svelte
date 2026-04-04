@@ -1,3 +1,1 @@
-<div>
-List of albums
-</div>
+<div>List of albums</div>

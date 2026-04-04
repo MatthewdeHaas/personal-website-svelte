@@ -8,21 +8,21 @@ A personal website built with SvelteKit and Node, containerized with Docker, dep
 
 ## Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend / Full-stack framework | SvelteKit (adapter-node) |
-| Runtime | Node.js |
-| Styling | Tailwind CSS |
-| Markdown / Blog | mdsvex |
-| Math rendering (future) | remark-math + rehype-katex |
-| Database | Postgres (gallery metadata + view counts only) |
-| Object storage | DigitalOcean Spaces or Cloudflare R2 |
-| Reverse proxy / TLS | Caddy |
-| Containerization | Docker + Docker Compose |
-| Container registry | GitHub Container Registry (GHCR) |
-| Hosting | DigitalOcean Droplet + Block Storage volume |
-| CI/CD | GitHub Actions |
-| Provisioning | TypeScript provisioning script (DigitalOcean API) |
+| Layer                           | Technology                                        |
+| ------------------------------- | ------------------------------------------------- |
+| Frontend / Full-stack framework | SvelteKit (adapter-node)                          |
+| Runtime                         | Node.js                                           |
+| Styling                         | Tailwind CSS                                      |
+| Markdown / Blog                 | mdsvex                                            |
+| Math rendering (future)         | remark-math + rehype-katex                        |
+| Database                        | Postgres (gallery metadata + view counts only)    |
+| Object storage                  | DigitalOcean Spaces or Cloudflare R2              |
+| Reverse proxy / TLS             | Caddy                                             |
+| Containerization                | Docker + Docker Compose                           |
+| Container registry              | GitHub Container Registry (GHCR)                  |
+| Hosting                         | DigitalOcean Droplet + Block Storage volume       |
+| CI/CD                           | GitHub Actions                                    |
+| Provisioning                    | TypeScript provisioning script (DigitalOcean API) |
 
 ---
 
@@ -82,14 +82,14 @@ personal-site/
 
 ## Routing
 
-| Route | Description |
-|---|---|
-| `/` | Home / about |
-| `/blog` | Posts index, sorted by date, derived from frontmatter |
-| `/blog/[slug]` | Individual post rendered from `.svx` |
-| `/gallery` | Gallery home, albums listed |
-| `/gallery/[album]` | Album view with photos and videos |
-| `/api/views/[id]` | POST endpoint — increments video view count in Postgres |
+| Route              | Description                                             |
+| ------------------ | ------------------------------------------------------- |
+| `/`                | Home / about                                            |
+| `/blog`            | Posts index, sorted by date, derived from frontmatter   |
+| `/blog/[slug]`     | Individual post rendered from `.svx`                    |
+| `/gallery`         | Gallery home, albums listed                             |
+| `/gallery/[album]` | Album view with photos and videos                       |
+| `/api/views/[id]`  | POST endpoint — increments video view count in Postgres |
 
 ---
 
@@ -98,6 +98,7 @@ personal-site/
 Posts are `.svx` files in `src/posts/`. They are glob-imported at build time — no database involved.
 
 **Frontmatter schema:**
+
 ```yaml
 ---
 title: On Running in the Rain
@@ -108,20 +109,24 @@ description: A short description for the index card.
 ```
 
 **Posts index (`/blog/+page.server.ts`):**
+
 ```ts
-const modules = import.meta.glob('/src/posts/*.svx', { eager: true });
+const modules = import.meta.glob("/src/posts/*.svx", { eager: true });
 
 export const load = () => {
   const posts = Object.entries(modules).map(([path, mod]) => ({
-    slug: path.split('/').at(-1).replace('.svx', ''),
+    slug: path.split("/").at(-1).replace(".svx", ""),
     ...(mod as any).metadata,
   }));
 
-  return { posts: posts.sort((a, b) => Date.parse(b.date) - Date.parse(a.date)) };
+  return {
+    posts: posts.sort((a, b) => Date.parse(b.date) - Date.parse(a.date)),
+  };
 };
 ```
 
 **Individual post (`/blog/[slug]/+page.ts`):**
+
 ```ts
 export const load = async ({ params }) => {
   const post = await import(`../../../posts/${params.slug}.svx`);
@@ -130,10 +135,13 @@ export const load = async ({ params }) => {
 ```
 
 **mdsvex config (`mdsvex.config.js`):**
+
 ```js
 export default {
-  extensions: ['.svx'],
-  highlight: { /* shiki or highlight.js */ },
+  extensions: [".svx"],
+  highlight: {
+    /* shiki or highlight.js */
+  },
   // remark-math + rehype-katex added here when LaTeX support is needed
 };
 ```
@@ -147,6 +155,7 @@ Publishing a post = drop a `.svx` file in `src/posts/` and push to main. The dep
 The gallery is the only section backed by Postgres. Media files themselves live in object storage (Spaces or R2), referenced by URL.
 
 **Postgres schema:**
+
 ```sql
 CREATE TABLE albums (
   id          SERIAL PRIMARY KEY,
@@ -170,6 +179,7 @@ CREATE TABLE assets (
 ```
 
 **View tracking:**
+
 ```ts
 // /api/views/[id]/+server.ts
 export const POST = async ({ params, locals }) => {
@@ -187,6 +197,7 @@ Called client-side once when a video begins playing. No auth required — this i
 ## Docker
 
 **Multi-stage Dockerfile:**
+
 ```dockerfile
 # Stage 1: build
 FROM node:22-alpine AS builder
@@ -207,12 +218,13 @@ CMD ["node", "build"]
 ```
 
 **Dev (`docker-compose.yml`):**
+
 ```yaml
 services:
   app:
     build: .
     ports: ["3000:3000"]
-    volumes: ["./src:/app/src"]  # hot reload in dev
+    volumes: ["./src:/app/src"] # hot reload in dev
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/site
   db:
@@ -228,6 +240,7 @@ volumes:
 ```
 
 **Prod (`infra/docker-compose.prod.yml`):**
+
 ```yaml
 services:
   app:
@@ -252,7 +265,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - /mnt/block-storage/pgdata:/var/lib/postgresql/data  # block storage volume
+      - /mnt/block-storage/pgdata:/var/lib/postgresql/data # block storage volume
     restart: unless-stopped
 
 volumes:
@@ -260,6 +273,7 @@ volumes:
 ```
 
 **Caddyfile:**
+
 ```
 yourdomain.com {
   reverse_proxy app:3000
@@ -275,6 +289,7 @@ Caddy handles HTTPS automatically via Let's Encrypt. No certbot, no manual renew
 `infra/provision.ts` — run once to stand up the droplet. Reuse the pattern from Gambit.
 
 Steps performed:
+
 1. Create DigitalOcean droplet (Ubuntu 24, appropriate size)
 2. Attach block storage volume, mount at `/mnt/block-storage`
 3. Configure DNS A record pointing domain to droplet IP
@@ -301,9 +316,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - run: npm run check        # svelte-check + tsc
-      - run: npm run lint         # eslint
-      - run: npm run test         # vitest (if tests exist)
+      - run: npm run check # svelte-check + tsc
+      - run: npm run lint # eslint
+      - run: npm run test # vitest (if tests exist)
 ```
 
 ### Deploy — Main Branch (`.github/workflows/deploy.yml`)
@@ -346,14 +361,14 @@ jobs:
 
 ## Environment Variables
 
-| Variable | Used by | Description |
-|---|---|---|
-| `DATABASE_URL` | App (prod) | Postgres connection string |
-| `OBJECT_STORAGE_URL` | App | Base URL for Spaces / R2 bucket |
-| `OBJECT_STORAGE_KEY` | App | Access key for object storage |
-| `OBJECT_STORAGE_SECRET` | App | Secret for object storage |
-| `DROPLET_IP` | GitHub Actions | Droplet IP for SSH deploy step |
-| `SSH_PRIVATE_KEY` | GitHub Actions | Private key for deploy SSH |
+| Variable                | Used by        | Description                     |
+| ----------------------- | -------------- | ------------------------------- |
+| `DATABASE_URL`          | App (prod)     | Postgres connection string      |
+| `OBJECT_STORAGE_URL`    | App            | Base URL for Spaces / R2 bucket |
+| `OBJECT_STORAGE_KEY`    | App            | Access key for object storage   |
+| `OBJECT_STORAGE_SECRET` | App            | Secret for object storage       |
+| `DROPLET_IP`            | GitHub Actions | Droplet IP for SSH deploy step  |
+| `SSH_PRIVATE_KEY`       | GitHub Actions | Private key for deploy SSH      |
 
 Dev values live in `.env` (gitignored). Prod values are GitHub Actions secrets and injected into the droplet's `.env` at provision time.
 
@@ -371,11 +386,11 @@ Dev values live in `.env` (gitignored). Prod values are GitHub Actions secrets a
 
 ## Future Considerations
 
-| Item | Notes |
-|---|---|
-| LaTeX in blog | Add `remark-math` + `rehype-katex` to mdsvex config. No authoring changes needed. |
-| Draft posts | Frontmatter `draft: true` field, filtered out in the glob import. |
-| RSS feed | `/rss.xml` route, generated from the same glob import that powers the blog index. |
-| Search | Client-side with pagefind (static index at build time). No server needed. |
+| Item              | Notes                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| LaTeX in blog     | Add `remark-math` + `rehype-katex` to mdsvex config. No authoring changes needed.                             |
+| Draft posts       | Frontmatter `draft: true` field, filtered out in the glob import.                                             |
+| RSS feed          | `/rss.xml` route, generated from the same glob import that powers the blog index.                             |
+| Search            | Client-side with pagefind (static index at build time). No server needed.                                     |
 | Gallery upload UI | A protected `/admin` route backed by Better Auth for adding assets to Postgres + uploading to object storage. |
-| Analytics | Plausible or self-hosted Umami — both work as a single Docker service added to the prod compose file. |
+| Analytics         | Plausible or self-hosted Umami — both work as a single Docker service added to the prod compose file.         |
