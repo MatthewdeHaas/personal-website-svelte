@@ -1,7 +1,6 @@
 import postgres from "postgres";
+import { env } from "$env/dynamic/private";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "";
-
-const sql = postgres(DATABASE_URL);
+const sql = postgres(env.DATABASE_URL);
 
 export { sql };
