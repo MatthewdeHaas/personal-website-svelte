@@ -6,7 +6,7 @@ import { join } from "path";
 import "dotenv/config";
 
 const REGION = "sfo3";
-const DROPLET_NAME = "personal-site";
+const DROPLET_NAME = "personal-website";
 const DROPLET_SIZE = "s-1vcpu-1gb";
 const DROPLET_IMAGE = "docker-20-04";
 const DOMAIN = "mattdehaas.dev";
@@ -117,7 +117,12 @@ const setupDroplet = async (ip: string, deployKeyPath: string) => {
 
   if (!ssh.isConnected()) throw new Error("SSH connection failed");
 
-  const commands = ["ufw allow 80", "ufw allow 443", "mkdir -p /app"];
+  const commands = [
+    "ufw allow 22",
+    "ufw allow 80",
+    "ufw allow 443",
+    "mkdir -p /app",
+  ];
 
   for (const cmd of commands) {
     console.log(`Running: ${cmd}`);
@@ -157,7 +162,7 @@ const setupDns = async (ip: string) => {
       domain_name: DOMAIN,
       domain_record_id: existing.id!,
       type: "A",
-      name: "@",
+      name: "svelte",
       data: ip,
       ttl: 300,
     });
@@ -166,7 +171,7 @@ const setupDns = async (ip: string) => {
     await dots.domain.createDomainRecord({
       domain_name: DOMAIN,
       type: "A",
-      name: "@",
+      name: "svelte",
       data: ip,
       ttl: 300,
     });
