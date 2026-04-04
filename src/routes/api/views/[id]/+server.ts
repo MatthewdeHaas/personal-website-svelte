@@ -1,8 +1,10 @@
-import { sql } from "$lib/db";
+import { incrementViewCount } from "$lib/server/gallery";
+import { json } from "@sveltejs/kit";
 
 export const POST = async ({ params }) => {
-  await sql`
-    UPDATE assets SET view_count = view_count + 1 WHERE id = ${params.id}
-  `;
+  const id = parseInt(params.id);
+  if (isNaN(id)) return json({ error: "Invalid id" }, { status: 400 });
+
+  await incrementViewCount(id);
   return new Response(null, { status: 204 });
 };

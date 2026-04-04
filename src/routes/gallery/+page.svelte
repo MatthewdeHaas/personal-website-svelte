@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Album } from "./+page.server.ts";
+  import type { Album } from "$lib/server/gallery";
 
   let { data }: { data: { albums: Album[] } } = $props();
 </script>
@@ -20,9 +20,9 @@
       <a href="/gallery/{album.slug}" class="group block no-underline">
         <div class="aspect-square overflow-hidden mb-2">
           <img
-            src={album.cover}
+            src={album.cover_url}
             alt={album.title}
-            class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
+            class="w-full h-full object-cover transition-all duration-300"
           />
         </div>
         <div class="flex items-baseline justify-between gap-2">

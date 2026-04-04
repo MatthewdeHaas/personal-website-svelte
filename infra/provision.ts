@@ -1,16 +1,31 @@
 import { createApiClient } from "dots-wrapper";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { execSync } from "child_process";
+import {
+  S3Client,
+  CreateBucketCommand,
+  PutBucketCorsCommand,
+  PutBucketAclCommand,
+  HeadBucketCommand,
+} from "@aws-sdk/client-s3";
 import { NodeSSH } from "node-ssh";
 import { join } from "path";
 import "dotenv/config";
 
 const REGION = "sfo3";
-const DROPLET_NAME = "personal-website";
+const DROPLET_NAME = "personal-site";
 const DROPLET_SIZE = "s-1vcpu-1gb";
 const DROPLET_IMAGE = "docker-20-04";
 const DOMAIN = "mattdehaas.dev";
+
+const VOLUME_NAME = "personal-site-pg-data";
+const VOLUME_SIZE_GB = 10;
+const VOLUME_MOUNT = "/mnt/personal_site_pg_data";
+
 const GITHUB_REPO = "MatthewdeHaas/personal-website-svelte";
+
+const BUCKET_NAME = "personal-site-media";
+const SPACES_ENDPOINT = `https://${REGION}.digitaloceanspaces.com`;
 
 const token = process.env.DIGITALOCEAN_TOKEN;
 if (!token) throw new Error("DIGITALOCEAN_TOKEN is not set");
@@ -27,7 +42,10 @@ const getDroplet = async () => {
   return droplets?.find((d) => d.name === DROPLET_NAME) ?? null;
 };
 
-const createDroplet = async (sshKeyFingerprints: string[]) => {
+const createDroplet = async (
+  sshKeyFingerprints: string[],
+  volumeId: string,
+) => {
   console.log(`Creating droplet ${DROPLET_NAME}...`);
   const {
     data: { droplet },
@@ -37,6 +55,7 @@ const createDroplet = async (sshKeyFingerprints: string[]) => {
     size: DROPLET_SIZE,
     image: DROPLET_IMAGE,
     ssh_keys: sshKeyFingerprints,
+    volume_ids: [volumeId],
     tags: ["personal-site"],
   });
   console.log(`Droplet created: ${droplet!.id}`);
@@ -116,6 +135,22 @@ const setupDroplet = async (ip: string, deployKeyPath: string) => {
   }
 
   if (!ssh.isConnected()) throw new Error("SSH connection failed");
+
+  const volumeCommands = [
+    `sleep 5 && lsblk /dev/sda | grep -q ext4 || mkfs.ext4 /dev/sda`,
+    `mkdir -p ${VOLUME_MOUNT}`,
+    `mountpoint -q ${VOLUME_MOUNT} || mount /dev/sda ${VOLUME_MOUNT}`,
+    `grep -q '/dev/sda' /etc/fstab || echo '/dev/sda ${VOLUME_MOUNT} ext4 defaults,nofail 0 2' >> /etc/fstab`,
+    `mkdir -p ${VOLUME_MOUNT}/postgres`,
+    `chown -R 999:999 ${VOLUME_MOUNT}/postgres`,
+  ];
+
+  for (const cmd of volumeCommands) {
+    console.log(`Running: ${cmd}`);
+    const result = await ssh.execCommand(cmd);
+    if (result.stdout) console.log(result.stdout);
+    if (result.stderr) console.error(result.stderr);
+  }
 
   const commands = [
     "ufw allow 22",
@@ -235,7 +270,139 @@ const updateEnv = (updates: Record<string, string>) => {
   console.log(".env updated");
 };
 
+const getSpacesClient = () => {
+  const accessKey = process.env.SPACES_ACCESS_KEY;
+  const secretKey = process.env.SPACES_SECRET_KEY;
+  if (!accessKey || !secretKey)
+    throw new Error("SPACES_ACCESS_KEY or SPACES_SECRET_KEY is not set");
+
+  return new S3Client({
+    endpoint: SPACES_ENDPOINT,
+    region: "us-east-1", // required by S3 client, ignored by Spaces
+    credentials: {
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
+    },
+  });
+};
+
+const bucketExists = async (client: S3Client): Promise<boolean> => {
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const setupSpaces = async () => {
+  const client = getSpacesClient();
+
+  if (await bucketExists(client)) {
+    console.log(`Bucket ${BUCKET_NAME} already exists`);
+    return;
+  }
+
+  console.log(`Creating bucket ${BUCKET_NAME}...`);
+  await client.send(
+    new CreateBucketCommand({
+      Bucket: BUCKET_NAME,
+    }),
+  );
+
+  // Make bucket public
+  await client.send(
+    new PutBucketAclCommand({
+      Bucket: BUCKET_NAME,
+      ACL: "public-read",
+    }),
+  );
+
+  // Set CORS so the browser can load media directly from Spaces
+  await client.send(
+    new PutBucketCorsCommand({
+      Bucket: BUCKET_NAME,
+      CORSConfiguration: {
+        CORSRules: [
+          {
+            AllowedOrigins: [`https://svelte.mattdehaas.dev`],
+            AllowedMethods: ["GET"],
+            AllowedHeaders: ["*"],
+            MaxAgeSeconds: 3600,
+          },
+        ],
+      },
+    }),
+  );
+
+  console.log(`Bucket ${BUCKET_NAME} created and configured`);
+};
+
+const getVolume = async () => {
+  const {
+    data: { volumes },
+  } = await dots.volume.listVolumes({});
+  return volumes?.find((v) => v.name === VOLUME_NAME) ?? null;
+};
+
+const createVolume = async () => {
+  console.log(`Creating volume ${VOLUME_NAME}...`);
+  const {
+    data: { volume },
+  } = await dots.volume.createVolume({
+    name: VOLUME_NAME,
+    region: REGION,
+    size_gigabytes: VOLUME_SIZE_GB,
+    description: "Postgres data for personal site",
+    filesystem_type: "ext4",
+  });
+  console.log(`Volume created: ${volume!.id}`);
+  return volume!;
+};
+
+const attachVolume = async (volumeId: string, dropletId: number) => {
+  console.log(`Attaching volume ${volumeId} to droplet ${dropletId}...`);
+  await dots.volume.attachVolumeToDroplet({
+    volume_id: volumeId,
+    droplet_id: dropletId,
+    region: REGION,
+    type: "attach",
+  });
+  console.log("Volume attached");
+};
+
+const setupEnv = async (ip: string, deployKeyPath: string) => {
+  const ssh = new NodeSSH();
+  await ssh.connect({
+    host: ip,
+    username: "root",
+    privateKeyPath: deployKeyPath,
+  });
+
+  const env = [
+    `DATABASE_URL=postgres://postgres:${process.env.POSTGRES_PASSWORD}@db:5432/personal-site`,
+    `POSTGRES_DB=personal-site`,
+    `POSTGRES_USER=postgres`,
+    `POSTGRES_PASSWORD=${process.env.POSTGRES_PASSWORD}`,
+    `OBJECT_STORAGE_URL=https://${BUCKET_NAME}.${REGION}.digitaloceanspaces.com`,
+  ].join("\n");
+
+  await ssh.execCommand(`echo "${env}" > /app/.env`);
+  console.log("/app/.env written to droplet");
+  await ssh.dispose();
+};
+
 const main = async () => {
+  await setupSpaces();
+
+  // Ensure volume exists
+  let volume = await getVolume();
+  if (volume) {
+    console.log(`Volume ${VOLUME_NAME} already exists (${volume.id})`);
+  } else {
+    volume = await createVolume();
+  }
+
   const deployKeyPath = `${process.env.HOME}/.ssh/personal_site_deploy`;
   let droplet = await getDroplet();
 
@@ -244,8 +411,19 @@ const main = async () => {
   } else {
     const myKey = await getSshKey("Matthew");
     const deployKey = await getOrCreateDeployKey(deployKeyPath);
-    await createDroplet([myKey.fingerprint!, deployKey.fingerprint!]);
+    await createDroplet(
+      [myKey.fingerprint!, deployKey.fingerprint!],
+      volume.id!,
+    );
     droplet = await waitForActive();
+  }
+
+  // Attach volume if not already attached
+  const volumeAttached = droplet.volume_ids?.includes(volume.id!);
+  if (volumeAttached) {
+    console.log("Volume already attached");
+  } else {
+    await attachVolume(volume.id!, droplet.id!);
   }
 
   const ip = droplet?.networks?.v4?.find(
@@ -254,12 +432,15 @@ const main = async () => {
   if (!ip) throw new Error("Could not determine droplet IP");
 
   await setupDroplet(ip, deployKeyPath);
+  await setupEnv(ip, deployKeyPath);
   await setupDns(ip);
   await setGithubVariable("DROPLET_IP", ip);
 
   updateEnv({
     DROPLET_IP: ip,
     DROPLET_ID: String(droplet.id!),
+    VOLUME_ID: String(volume.id!),
+    OBJECT_STORAGE_URL: `https://${BUCKET_NAME}.${REGION}.digitaloceanspaces.com`,
   });
 
   console.log("\nProvisioning complete:");

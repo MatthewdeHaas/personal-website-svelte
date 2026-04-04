@@ -1,18 +1,18 @@
 <script lang="ts">
-  import type { AlbumDetail, MediaType } from "./+page.server.ts";
+  import type { Album, Asset } from "$lib/server/gallery";
 
-  let { data }: { data: { album: AlbumDetail } } = $props();
+  let { data }: { data: { album: Album; assets: Asset[] } } = $props();
 
-  let filter = $state<MediaType | "all">("all");
+  let filter = $state<"photo" | "video" | "all">("all");
 
   let filtered = $derived(
     filter === "all"
-      ? data.album.assets
-      : data.album.assets.filter((a) => a.type === filter),
+      ? data.assets
+      : data.assets.filter((a) => a.type === filter),
   );
 
-  const hasPhotos = data.album.assets.some((a) => a.type === "photo");
-  const hasVideos = data.album.assets.some((a) => a.type === "video");
+  let hasPhotos = $derived(data.assets.some((a) => a.type === "photo"));
+  let hasVideos = $derived(data.assets.some((a) => a.type === "video"));
 </script>
 
 <div class="max-w-2xl mx-auto">
@@ -62,7 +62,7 @@
           <img
             src={asset.url}
             alt={asset.caption ?? ""}
-            class="w-full block grayscale group-hover:grayscale-0 transition-all duration-300"
+            class="w-full block transition-all duration-300"
           />
         {:else}
           <video
@@ -70,7 +70,10 @@
             class="w-full block"
             controls
             preload="metadata"
-          ></video>
+            onplay={() => fetch(`/api/views/${asset.id}`, { method: "POST" })}
+          >
+            <track kind="captions" />
+          </video>
         {/if}
 
         {#if asset.caption}

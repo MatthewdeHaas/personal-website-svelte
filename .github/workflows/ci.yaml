@@ -13,4 +13,6 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: npm run check
+        env:
+          DATABASE_URL: postgres://postgres:password@localhost:5432/personal-site
       - run: npm run lint

@@ -1,16 +1,18 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     ports: ["3000:3000"]
-    volumes: ["./src:/app/src"] # dev hot reload
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/personal-website
+      - DATABASE_URL=postgres://postgres:password@db:5432/personal-website
   db:
     image: postgres:17-alpine
+    ports: ["5432:5432"]
     environment:
       POSTGRES_DB: personal-website
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: password
     volumes: ["pgdata:/var/lib/postgresql/data"]
 
 volumes:

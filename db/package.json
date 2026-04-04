@@ -1,0 +1,18 @@
+{
+  "name": "db",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "migrate": "tsx migrate.ts",
+    "migrate:prod": "DATABASE_URL='postgres://postgres:password@64.23.231.122:5432/personal-site' tsx migrate.ts",
+    "seed": "tsx seed.ts",
+    "seed:prod": "DATABASE_URL='postgres://postgres:password@64.23.231.122:5432/personal-site' tsx seed.ts"
+  },
+  "dependencies": {
+    "postgres": "^3.4.4",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}
