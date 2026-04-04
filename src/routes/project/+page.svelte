@@ -1,3 +1,1 @@
-<div>
-List of projects
-</div>
+<div>List of projects</div>
