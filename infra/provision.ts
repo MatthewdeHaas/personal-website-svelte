@@ -232,7 +232,6 @@ const updateEnv = (updates: Record<string, string>) => {
 
 const main = async () => {
   const deployKeyPath = `${process.env.HOME}/.ssh/personal_site_deploy`;
-
   let droplet = await getDroplet();
 
   if (droplet) {
@@ -240,12 +239,13 @@ const main = async () => {
   } else {
     const myKey = await getSshKey("Matthew");
     const deployKey = await getOrCreateDeployKey(deployKeyPath);
-
-    droplet = await createDroplet([myKey.fingerprint!, deployKey.fingerprint!]);
+    await createDroplet([myKey.fingerprint!, deployKey.fingerprint!]);
     droplet = await waitForActive();
   }
 
-  const ip = droplet.networks?.v4?.find((n) => n.type === "public")?.ip_address;
+  const ip = droplet?.networks?.v4?.find(
+    (n) => n.type === "public",
+  )?.ip_address;
   if (!ip) throw new Error("Could not determine droplet IP");
 
   await setupDroplet(ip, deployKeyPath);
