@@ -37,6 +37,8 @@
 		"vite": "^7.3.1"
 	},
 	"dependencies": {
+		"@fontsource/cormorant-garamond": "^5.2.11",
+		"@fontsource/playfair-display": "^5.2.8",
 		"@sveltejs/adapter-node": "^5.5.4"
 	}
 }
