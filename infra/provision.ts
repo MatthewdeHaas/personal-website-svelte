@@ -371,6 +371,27 @@ const attachVolume = async (volumeId: string, dropletId: number) => {
   console.log("Volume attached");
 };
 
+const setupEnv = async (ip: string, deployKeyPath: string) => {
+  const ssh = new NodeSSH();
+  await ssh.connect({
+    host: ip,
+    username: "root",
+    privateKeyPath: deployKeyPath,
+  });
+
+  const env = [
+    `DATABASE_URL=postgres://postgres:${process.env.POSTGRES_PASSWORD}@db:5432/personal-site`,
+    `POSTGRES_DB=personal-site`,
+    `POSTGRES_USER=postgres`,
+    `POSTGRES_PASSWORD=${process.env.POSTGRES_PASSWORD}`,
+    `OBJECT_STORAGE_URL=https://${BUCKET_NAME}.${REGION}.digitaloceanspaces.com`,
+  ].join("\n");
+
+  await ssh.execCommand(`echo "${env}" > /app/.env`);
+  console.log("/app/.env written to droplet");
+  await ssh.dispose();
+};
+
 const main = async () => {
   await setupSpaces();
 
@@ -411,6 +432,7 @@ const main = async () => {
   if (!ip) throw new Error("Could not determine droplet IP");
 
   await setupDroplet(ip, deployKeyPath);
+  await setupEnv(ip, deployKeyPath);
   await setupDns(ip);
   await setGithubVariable("DROPLET_IP", ip);
 

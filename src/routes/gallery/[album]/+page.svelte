@@ -1,18 +1,18 @@
 <script lang="ts">
-  import type { AlbumDetail, MediaType } from "./+page.server.ts";
+  import type { Album, Asset } from "$lib/server/gallery";
 
-  let { data }: { data: { album: AlbumDetail } } = $props();
+  let { data }: { data: { album: Album; assets: Asset[] } } = $props();
 
-  let filter = $state<MediaType | "all">("all");
+  let filter = $state<"photo" | "video" | "all">("all");
 
   let filtered = $derived(
     filter === "all"
-      ? data.album.assets
-      : data.album.assets.filter((a) => a.type === filter),
+      ? data.assets
+      : data.assets.filter((a) => a.type === filter),
   );
 
-  const hasPhotos = data.album.assets.some((a) => a.type === "photo");
-  const hasVideos = data.album.assets.some((a) => a.type === "video");
+  const hasPhotos = data.assets.some((a) => a.type === "photo");
+  const hasVideos = data.assets.some((a) => a.type === "video");
 </script>
 
 <div class="max-w-2xl mx-auto">
@@ -26,14 +26,14 @@
     </a>
     <div class="flex items-baseline justify-between mt-2">
       <h2 class="font-display text-3xl font-bold text-stone-900">
-        {data.album.title}
+        {data.title}
       </h2>
       <span class="font-serif text-xs tracking-widest uppercase text-stone-400"
-        >{data.album.year}</span
+        >{data.year}</span
       >
     </div>
     <p class="font-serif text-sm text-stone-500 mt-1">
-      {data.album.description}
+      {data.description}
     </p>
   </div>
 
@@ -62,7 +62,7 @@
           <img
             src={asset.url}
             alt={asset.caption ?? ""}
-            class="w-full block grayscale group-hover:grayscale-0 transition-all duration-300"
+            class="w-full block transition-all duration-300"
           />
         {:else}
           <video
@@ -70,6 +70,7 @@
             class="w-full block"
             controls
             preload="metadata"
+            onplay={() => fetch(`/api/views/${asset.id}`, { method: "POST" })}
           ></video>
         {/if}
 

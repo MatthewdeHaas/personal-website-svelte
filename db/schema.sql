@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS assets (
   id          SERIAL PRIMARY KEY,
   album_id    INTEGER REFERENCES albums(id) ON DELETE CASCADE,
   type        TEXT NOT NULL CHECK (type IN ('photo', 'video')),
-  url         TEXT NOT NULL,
+  url         TEXT NOT NULL UNIQUE,
   caption     TEXT,
   position    INTEGER NOT NULL DEFAULT 0,
   view_count  INTEGER DEFAULT 0,

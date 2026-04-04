@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "migrate": "tsx migrate.ts",
-    "migrate:prod": "DATABASE_URL='postgres://postgres:password@64.23.231.122:5432/personal-site' tsx migrate.ts"
+    "migrate:prod": "DATABASE_URL='postgres://postgres:password@64.23.231.122:5432/personal-site' tsx migrate.ts",
+    "seed": "tsx seed.ts",
+    "seed:prod": "DATABASE_URL='postgres://postgres:password@64.23.231.122:5432/personal-site' tsx seed.ts"
   },
   "dependencies": {
     "postgres": "^3.4.4",
