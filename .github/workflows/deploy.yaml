@@ -41,7 +41,7 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: infra/docker-compose.prod.yaml
-          target: /app/docker-compose.prod.yaml
+          target: /app
           strip_components: 1
 
       - name: Deploy to droplet
