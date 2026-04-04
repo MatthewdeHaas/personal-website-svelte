@@ -1,16 +1,27 @@
 import { createApiClient } from "dots-wrapper";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { execSync } from "child_process";
+import {
+  S3Client,
+  CreateBucketCommand,
+  PutBucketCorsCommand,
+  PutBucketAclCommand,
+  HeadBucketCommand,
+} from "@aws-sdk/client-s3";
 import { NodeSSH } from "node-ssh";
 import { join } from "path";
 import "dotenv/config";
 
 const REGION = "sfo3";
-const DROPLET_NAME = "personal-website";
+const DROPLET_NAME = "personal-site";
 const DROPLET_SIZE = "s-1vcpu-1gb";
 const DROPLET_IMAGE = "docker-20-04";
 const DOMAIN = "mattdehaas.dev";
+
 const GITHUB_REPO = "MatthewdeHaas/personal-website-svelte";
+
+const BUCKET_NAME = "personal-site-media";
+const SPACES_ENDPOINT = `https://${REGION}.digitaloceanspaces.com`;
 
 const token = process.env.DIGITALOCEAN_TOKEN;
 if (!token) throw new Error("DIGITALOCEAN_TOKEN is not set");
@@ -235,7 +246,77 @@ const updateEnv = (updates: Record<string, string>) => {
   console.log(".env updated");
 };
 
+const getSpacesClient = () => {
+  const accessKey = process.env.SPACES_ACCESS_KEY;
+  const secretKey = process.env.SPACES_SECRET_KEY;
+  if (!accessKey || !secretKey)
+    throw new Error("SPACES_ACCESS_KEY or SPACES_SECRET_KEY is not set");
+
+  return new S3Client({
+    endpoint: SPACES_ENDPOINT,
+    region: "us-east-1", // required by S3 client, ignored by Spaces
+    credentials: {
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
+    },
+  });
+};
+
+const bucketExists = async (client: S3Client): Promise<boolean> => {
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const setupSpaces = async () => {
+  const client = getSpacesClient();
+
+  if (await bucketExists(client)) {
+    console.log(`Bucket ${BUCKET_NAME} already exists`);
+    return;
+  }
+
+  console.log(`Creating bucket ${BUCKET_NAME}...`);
+  await client.send(
+    new CreateBucketCommand({
+      Bucket: BUCKET_NAME,
+    }),
+  );
+
+  // Make bucket public
+  await client.send(
+    new PutBucketAclCommand({
+      Bucket: BUCKET_NAME,
+      ACL: "public-read",
+    }),
+  );
+
+  // Set CORS so the browser can load media directly from Spaces
+  await client.send(
+    new PutBucketCorsCommand({
+      Bucket: BUCKET_NAME,
+      CORSConfiguration: {
+        CORSRules: [
+          {
+            AllowedOrigins: [`https://svelte.mattdehaas.dev`],
+            AllowedMethods: ["GET"],
+            AllowedHeaders: ["*"],
+            MaxAgeSeconds: 3600,
+          },
+        ],
+      },
+    }),
+  );
+
+  console.log(`Bucket ${BUCKET_NAME} created and configured`);
+};
+
 const main = async () => {
+  await setupSpaces();
+
   const deployKeyPath = `${process.env.HOME}/.ssh/personal_site_deploy`;
   let droplet = await getDroplet();
 
@@ -260,6 +341,7 @@ const main = async () => {
   updateEnv({
     DROPLET_IP: ip,
     DROPLET_ID: String(droplet.id!),
+    OBJECT_STORAGE_URL: `https://${BUCKET_NAME}.${REGION}.digitaloceanspaces.com`,
   });
 
   console.log("\nProvisioning complete:");

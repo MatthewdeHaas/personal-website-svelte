@@ -1,0 +1,15 @@
+{
+  "name": "db",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "migrate": "tsx migrate.ts"
+  },
+  "dependencies": {
+    "postgres": "^3.4.4",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

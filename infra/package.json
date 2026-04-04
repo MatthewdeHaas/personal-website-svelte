@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1024.0",
     "dotenv": "^17.4.0",
     "dots-wrapper": "^3.12.8",
     "node-ssh": "^13.2.1"
