@@ -39,10 +39,7 @@
     </div>
   {:else}
     <div class="flex flex-col items-center justify-center py-24 text-center">
-      <div class="text-5xl mb-4">🚧</div>
-
       <h1 class="text-3xl font-bold text-stone-900 mb-2">Coming Soon</h1>
-
       <p class="text-stone-500 max-w-md mb-6">
         I'm still writing this article. It’ll be published once it's ready.
       </p>
