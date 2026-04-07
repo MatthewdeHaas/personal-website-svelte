@@ -1,6 +1,9 @@
 services:
   app:
     image: ghcr.io/matthewdehaas/personal-website-svelte:latest
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - OBJECT_STORAGE_URL=${OBJECT_STORAGE_URL}
@@ -23,6 +26,11 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - /mnt/personal_site_pg_data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 volumes:
