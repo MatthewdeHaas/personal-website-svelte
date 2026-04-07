@@ -1,9 +1,0 @@
----
-title: Hello World
-date: 2026-01-01
-description: My first post.
----
-
-# Hello World
-
-This is a test post.

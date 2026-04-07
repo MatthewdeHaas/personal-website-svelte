@@ -1,0 +1,70 @@
+---
+title: Gambit - My first dApp
+date: 2026-04-06T14:30:00
+description: Exploring the history and current state of my favourite personal project
+---
+
+
+## Overview
+
+Gambit is a decentralized betting platform. It allows users to create bets using cryptocurrency with a group of up to 16. User sign in with their browser wallet and interact with a smart contract that facilitates the lifecycle of the bet. Bets are settled optimistically, meaning the bets enter a *claim* period where anyone can post collateral to claim they are the winner. If one person claims, they win the bet. If more than one claim, the bet is voted on by a jury.
+
+The jury is a separate smart contract written for Gambit. There is a jury fee to join, and jurors can vote on conflicted bets. Since this it is all on-chain, the jury has two phases: a commit phase and a reveal phase. Jurors first lock in their votes anonymously, then when commit phase expires, they reveal their votes. The participant of the conflicted bet holding the position that was voted on the most receives their winnings and their collateral, the loser nothing, losing the posted collateral, the jurors that voted in the majority receive their cut back as well as a cut of the dissenting jurors' collateral, and the dissenting  jurors nothing at all. 
+
+## Architecture
+
+Gambit's architecture saw myriad changes over its development, so I'll list what is currently in use as the stack is (hopefully) not going to change in any significant way:
+- **Front end:** Svelte, TailwindCSS, Shadcn, Ethers.js
+- **Back end:** SvelteKit, Node.js, [IPFS](https://ipfs.tech/)
+- **Database:** PostgreSQL
+- **Smart contract:** [Solidity](https://www.soliditylang.org/), [Hardhat](https://hardhat.org/)
+- **Blockchain:** [Polygon](https://polygon.technology/)
+- **Blockchain RPC provider:** [Alchemy](https://www.alchemy.com/)
+- **CI/CD:** Docker, GitHub Actions 
+- **Testing:** Vitetest
+- **Hosting:** [DigitalOcean](https://digitalocean.com/), [Caddy](https://caddyserver.com/)
+
+The proceeding history section details where the stack started and how it settled on where it is now.
+
+## History
+
+### Bettt
+
+Gambit began as a simple idea between friends. That name was created later, at this point it was called Bettt, a play on a previous entrepreneurial venture [Polll](https://github.com/rileywheadon/poll-app). We wanted to capture the excitement of betting on real world events, but remove the market dynamic. When bet prices are pre-determined and locked in, one is only as profitable as they are competent at predicting. This is the fundamental difference between Gambit and prediction markets like [Polymarket](https://polymarket.com), and why, in my opinion, does not fit the trading or gambling label.
+
+A proof of concept was drafted in the beginning of summer 2025. We decided on a humble stack: pure html with TailwindCSS on the front end, Flask as a web server, SQLite as a file-based database, and DigitalOcean as a hosting provider. It began as a simple CRUD app. Account information was stored in the database, bets were able to be created, confirmed, and settled via mutual agreement. The goal, contrastly to Polll, was to satisfy the requirements in the simplest manner possible. 
+
+In line with this philosophy, the platform initially assumed that parties know and trust one another to agree on the winner. This works in theory, but the web interface's inherent friction was able to mirror the spontaneity of a traditional in person cash-settled bet, so something had to change. I wanted to add a cash-in/cash-out flow, but summer commitments and being away from team members made progress difficult. I tinkered with it here and there, improving the front end experience significantly and adding more features  such as private bets and followers, but nothing in the direction of marketing. As much as I still really liked the idea, progress halted and the idea fell into dormancy.
+
+### Deciding to monetize
+
+Fast-forward to the beginning of the 2026, we decided to bring Gambit out of dormancy after a handful of bad startup ideas. I had done enough personal projects by then to only look to engage with something new if it was a) substantially edifying, or b) potentially profitable. Since the app was already fully working, monetization was the core motivating factor. I always wanted to being the idea, so I was quick to return to the project.
+
+After tying up some loose ends from the previous implementation, we began discussing monetary architecture. Our naive instinct was to throw a [Stripe](https://stripe.com) in front of our current setup and treat the fake tokens already in the app as collateralized assets. There are several problems with this, but the biggest and most important at the time were economic. The already thin margins we operate at from taking a cut of volume flowing through the app disappeared with a third party payment provider. Furthermore, these web-based payment gateways are designed for online products and services that the platform owns, not to facilitate what is essentially the on-ramping of centralized, fungible token. The only other option was cryptocurrency.
+
+### Moving to crpytocurrency
+
+Cryptocurrency has several advantages that I learned with time, but financial flexibility was initially the strongest attractor. The fees were trivial (fractions of cents) and there was no need to fight a system that wasn't designed for our use case. That is not to say it comes without disadvantages. Ignoring the several orders of magnitude increase in complexity, the audience for such a platform would either shift, or become a major marketing challenge. None of this was impossible, but the difficulty felt promising, as if it were easy, people would have done it already.
+
+
+My first implementation was essentially crpyto in lieu of fiat. When users sign up they would receive a unique proxy wallet address which represents their account. They fund their account by sending money to this wallet address. The app otherwise works as previously established. The tokens are a 1-1 match with the US dollar. Users can withdrawal at any point up to the number of tokens in their account. This implementation 'worked', but there were several problems. 
+
+Most apparent is the implementation's fragility. There is nothing binding the tokens on the app to real world currency, so any bug involving token transfer is financial detrimental. A more subtle issue which seems impossible at first to solve is trust. How do we convince users to trust our app will always facilitate withdrawals? The irony in this implementation is how it contradicts a core tenant of what cryptocurrency offers: Trustlessness. After growing annoyed with the flaws of this implementation and researching dApps, I scrapped the old implementation and journeyed further down the Web3 rabbit hole.
+
+### Fully decentralizing
+A smart contract is a piece of code that can execute transactions on the blockchain as per its code. The only functional difference between a smart and legal contract is compliance is enforced via cryptography as opposed of the judicial system. A decentralized app (dApp) is a web app that places its core business logic on a smart contract. This is an even stronger condition than an open source project, as not only is the code public for everyone to see on a blockchain, but it is immutable too. Everything about this appealed to me, from migrating the source of financial truth to a blockchain, to removing the in-house token-minting pipeline. I quickly got to work migrating the codebase to support this.
+
+This was the most difficult part of the project, which was uniquely frustrating as the diffuclt work was tangential to writing the core business logic as a smart contract. Python was still being used here and the libraries for developing smart contracts and containerizing it all proved very difficult. Eventually the environment setup issues were reconciled and the contract was written and tested in isolation  from the web app. Integrating the contract code was trivial, but implementing a full bet lifecycle revealed a fundamental issues or architecture/data flow, and by consequence, our tech stack.
+
+The problem became apparent in contemplating how the time-based events are to be implemented. For the app to know when certain parts of the bet lifecycle are live, it requires either a polling or websocket connection over the blockchain, or a user-generated http request on a page where the bet is visible. None of these were very appealing, and there was this additional looming threat of archiectural fragility in how we were querying the blockchain. When a user places a bet, they send an http request to our server, which performs a database query and a blockchain transaction. Notice how there still exists trust on us as website providers to fulfill the transaction. 
+
+
+
+## What I learned
+
+
+### Why it exists
+Being very gambling-averse, it is ironic to me an idea barely orthogonal to online gambling was so captivating. Something about creating a platform to monetize one's knowledge of future events felt so empowering. But more significantly was how its monetary domain enforced certain rules of play without having to explicitly provision them. For example, no rational participant would put money on a bet they know to be unfair, which places a natural pressure on creators, who want challengers, to create bets that other would deem fair. The goal of this financial pressure is for the differences in event odds and public opinion on a particular event to be perfectly congruent. 
+
+
+ 
