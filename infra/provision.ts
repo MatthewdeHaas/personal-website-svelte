@@ -11,6 +11,7 @@ import {
 import { NodeSSH } from "node-ssh";
 import { join } from "path";
 import "dotenv/config";
+import crypto from "crypto";
 
 const REGION = "sfo3";
 const DROPLET_NAME = "personal-site";
@@ -26,6 +27,11 @@ const GITHUB_REPO = "MatthewdeHaas/personal-website-svelte";
 
 const BUCKET_NAME = "personal-site-media";
 const SPACES_ENDPOINT = `https://${REGION}.digitaloceanspaces.com`;
+
+const generatePassword = () => crypto.randomBytes(32).toString("base64url");
+
+const POSTGRES_PASSWORD = generatePassword();
+const APP_DB_PASSWORD = generatePassword();
 
 const token = process.env.DIGITALOCEAN_TOKEN;
 if (!token) throw new Error("DIGITALOCEAN_TOKEN is not set");
@@ -156,6 +162,9 @@ const setupDroplet = async (ip: string, deployKeyPath: string) => {
     "ufw allow 22",
     "ufw allow 80",
     "ufw allow 443",
+    "ufw default deny incoming",
+    "ufw default allow outgoing",
+    "ufw --force enable",
     "mkdir -p /app",
   ];
 
@@ -380,15 +389,82 @@ const setupEnv = async (ip: string, deployKeyPath: string) => {
   });
 
   const env = [
-    `DATABASE_URL=postgres://postgres:${process.env.POSTGRES_PASSWORD}@db:5432/personal-site`,
+    `DATABASE_URL=postgres://app_user:${APP_DB_PASSWORD}@db:5432/personal-site`,
     `POSTGRES_DB=personal-site`,
     `POSTGRES_USER=postgres`,
-    `POSTGRES_PASSWORD=${process.env.POSTGRES_PASSWORD}`,
+    `POSTGRES_PASSWORD=${POSTGRES_PASSWORD}`,
     `OBJECT_STORAGE_URL=https://${BUCKET_NAME}.${REGION}.digitaloceanspaces.com`,
   ].join("\n");
 
   await ssh.execCommand(`echo "${env}" > /app/.env`);
   console.log("/app/.env written to droplet");
+  await ssh.dispose();
+};
+
+const startDocker = async (ip: string, keyPath: string) => {
+  const ssh = new NodeSSH();
+
+  await ssh.connect({
+    host: ip,
+    username: "root",
+    privateKeyPath: keyPath,
+  });
+
+  console.log("Starting Docker containers...");
+
+  await ssh.execCommand(`
+    cd /app &&
+    docker compose -f docker-compose.prod.yaml up -d
+  `);
+
+  await ssh.dispose();
+};
+
+const setupDatabase = async (
+  ip: string,
+  keyPath: string,
+  appDbPassword: string,
+) => {
+  const ssh = new NodeSSH();
+
+  await ssh.connect({
+    host: ip,
+    username: "root",
+    privateKeyPath: keyPath,
+  });
+
+  console.log("Waiting for Postgres to be ready...");
+
+  await ssh.execCommand(`
+    until docker exec app-db-1 pg_isready -U postgres; do sleep 2; done
+  `);
+
+  console.log("Configuring database security...");
+
+  await ssh.execCommand(`
+		docker exec app-db-1 psql -U postgres <<'EOF'
+		CREATE USER app_user WITH PASSWORD '${appDbPassword}';
+
+		REVOKE ALL ON SCHEMA public FROM PUBLIC;
+
+		GRANT CONNECT ON DATABASE "personal-site" TO app_user;
+		GRANT USAGE ON SCHEMA public TO app_user;
+
+		GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public
+		GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+		EOF
+`);
+
+  console.log("Disabling postgres login...");
+
+  await ssh.execCommand(`
+    docker exec app-db-1 psql -U postgres -c "
+    ALTER USER postgres WITH NOLOGIN;
+    "
+  `);
+
   await ssh.dispose();
 };
 
@@ -433,6 +509,8 @@ const main = async () => {
 
   await setupDroplet(ip, deployKeyPath);
   await setupEnv(ip, deployKeyPath);
+  await startDocker(ip, deployKeyPath);
+  await setupDatabase(ip, deployKeyPath, APP_DB_PASSWORD);
   await setupDns(ip);
   await setGithubVariable("DROPLET_IP", ip);
 
