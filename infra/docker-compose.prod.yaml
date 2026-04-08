@@ -6,9 +6,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file: .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - OBJECT_STORAGE_URL=${OBJECT_STORAGE_URL}
+      - SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY}
+      - SPACES_SECRET_KEY=${SPACES_SECRET_KEY}
     restart: unless-stopped
     networks:
       - internal

@@ -400,6 +400,8 @@ const setupEnv = async (
     `POSTGRES_USER=postgres`,
     `POSTGRES_PASSWORD=${postgresPassword}`,
     `OBJECT_STORAGE_URL=https://${BUCKET_NAME}.${REGION}.digitaloceanspaces.com`,
+    `SPACES_ACCESS_KEY=${process.env.SPACES_ACCESS_KEY}`,
+    `SPACES_SECRET_KEY=${process.env.SPACES_SECRET_KEY}`,
   ].join("\n");
 
   // We wrap the content in a heredoc to prevent shell expansion of passwords
