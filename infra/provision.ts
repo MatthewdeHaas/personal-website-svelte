@@ -433,11 +433,12 @@ const setupDatabase = async (
   await ssh.execCommand(
     "cd /app && docker compose -f docker-compose.prod.yaml up -d db",
   );
+
+  // Fix file permissions inside the container immediately
+  console.log("Fixing volume permissions...");
   await ssh.execCommand(
     "docker exec -u root app-db-1 chown -R postgres:postgres /var/lib/postgresql/data",
   );
-
-  await new Promise((r) => setTimeout(r, 5000));
 
   console.log("Waiting for Postgres to be ready...");
   for (let i = 0; i < 30; i++) {
@@ -452,33 +453,38 @@ const setupDatabase = async (
     await new Promise((r) => setTimeout(r, 3000));
   }
 
-  console.log("Setting up app_user...");
-  const sqlCommands = [
+  console.log("Setting up app_user and permissions...");
+
+  // 1. Database-level commands (Connect to 'postgres' DB)
+  const dbCommands = [
     `DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_user') THEN CREATE ROLE app_user LOGIN PASSWORD '${appPassword}'; END IF; END $$;`,
-    `GRANT ALL PRIVILEGES ON DATABASE "personal-site" TO app_user;`,
-
-    // 1. Grant usage and create rights on the schema itself
-    `GRANT USAGE, CREATE ON SCHEMA public TO app_user;`,
-
-    // 2. Make app_user the owner of the public schema
-    // (Crucial for SvelteKit/Drizzle/Prisma migrations)
-    `ALTER SCHEMA public OWNER TO app_user;`,
-
-    // 3. Ensure future objects are accessible
-    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;`,
-    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;`,
+    `ALTER DATABASE "personal-site" OWNER TO app_user;`,
   ];
 
-  for (const cmd of sqlCommands) {
-    // We use single quotes for the shell command to prevent the remote shell
-    // from interpreting the $$ itself.
-    const shellEscapedCmd = cmd.replace(/'/g, "'\\''");
-    const res = await ssh.execCommand(
-      `docker exec app-db-1 psql -U postgres -d postgres -c '${shellEscapedCmd}'`,
+  for (const cmd of dbCommands) {
+    const shellEscaped = cmd.replace(/'/g, "'\\''");
+    await ssh.execCommand(
+      `docker exec app-db-1 psql -U postgres -d postgres -c '${shellEscaped}'`,
     );
-    if (res.stderr && !res.stderr.includes("already exists"))
-      console.error(res.stderr);
-    if (res.stdout) console.log(res.stdout);
+  }
+
+  // 2. Schema-level commands (Connect to 'personal-site' DB)
+  const schemaCommands = [
+    `ALTER SCHEMA public OWNER TO app_user;`,
+    `GRANT ALL ON SCHEMA public TO app_user;`,
+    `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_user;`,
+    `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_user;`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;`,
+    `ALTER ROLE app_user SET search_path TO public;`,
+  ];
+
+  for (const cmd of schemaCommands) {
+    const shellEscaped = cmd.replace(/'/g, "'\\''");
+    const res = await ssh.execCommand(
+      `docker exec app-db-1 psql -U postgres -d "personal-site" -c '${shellEscaped}'`,
+    );
+    if (res.stderr) console.error(res.stderr);
   }
 
   console.log("Database setup complete");
@@ -529,6 +535,32 @@ const main = async () => {
 
   await setupDatabase(ip, deployKeyPath, APP_DB_PASSWORD);
 
+  console.log("Restarting application to apply database changes...");
+  const ssh = new NodeSSH();
+  await ssh.connect({
+    host: ip,
+    username: "root",
+    privateKeyPath: deployKeyPath,
+  });
+
+  await ssh.execCommand(
+    "cd /app && docker compose -f docker-compose.prod.yaml restart app",
+  );
+
+  console.log("Verifying app is healthy...");
+  // This now works because we haven't disposed the connection yet
+  const healthCheck = await ssh.execCommand("docker ps | grep app");
+
+  if (healthCheck.stdout.includes("Up")) {
+    console.log("App container is running.");
+  } else {
+    console.warn(
+      "App container may not have started correctly. Check logs manually.",
+    );
+  }
+
+  // Dispose ONLY after all commands are finished
+  await ssh.dispose();
   await setupDns(ip);
   await setGithubVariable("DROPLET_IP", ip);
 
