@@ -1,5 +1,9 @@
 import postgres from "postgres";
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  ListObjectsV2Command,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
 import "dotenv/config";
 
 const sql = postgres(process.env.DATABASE_URL!);
@@ -51,6 +55,21 @@ const typeFromKey = (key: string): "photo" | "video" => {
   return ["mp4", "mov", "webm"].includes(ext) ? "video" : "photo";
 };
 
+const getMetadata = async (prefix: string) => {
+  try {
+    const res = await client.send(
+      new GetObjectCommand({
+        Bucket: BUCKET,
+        Key: `${prefix}metadata.json`,
+      }),
+    );
+    const body = await res.Body?.transformToString();
+    return JSON.parse(body || "{}");
+  } catch {
+    return null;
+  }
+};
+
 const main = async () => {
   const folders = await listFolders();
   console.log(`Found ${folders.length} album(s) in Spaces`);
@@ -59,13 +78,19 @@ const main = async () => {
     const slug = slugFromPrefix(folder);
 
     // Upsert album — preserve existing title/description/cover_url/year if set
+    const metadata = await getMetadata(folder);
+    const title = metadata?.title || slug;
+    const year = metadata?.year || new Date().getFullYear().toString();
+
     const [album] = await sql`
-      INSERT INTO albums (slug, title, year)
-      VALUES (${slug}, ${slug}, ${new Date().getFullYear().toString()})
-      ON CONFLICT (slug) DO UPDATE SET
-        slug = EXCLUDED.slug
-      RETURNING id, slug
-    `;
+			INSERT INTO albums (slug, title, year, description)
+			VALUES (${slug}, ${title}, ${year}, ${metadata?.description || ""})
+			ON CONFLICT (slug) DO UPDATE SET
+				title = EXCLUDED.title,
+				year = EXCLUDED.year,
+				description = EXCLUDED.description
+			RETURNING id, slug
+		`;
 
     console.log(`Album: ${album.slug} (id: ${album.id})`);
 

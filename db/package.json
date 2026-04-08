@@ -4,19 +4,16 @@
   "type": "module",
   "scripts": {
     "migrate": "tsx migrate.ts",
-    "migrate:prod": "dotenv -e ../infra/.env -- sh -c 'DATABASE_URL=postgres://postgres:password@$DROPLET_IP:5432/personal-site tsx migrate.ts'",
     "seed": "tsx seed.ts",
-    "seed:prod": "dotenv -e ../infra/.env -- sh -c 'DATABASE_URL=postgres://postgres:password@$DROPLET_IP:5432/personal-site tsx seed.ts'",
-    "sync": "tsx sync.ts",
-    "sync:prod": "dotenv -e ../infra/.env -- sh -c 'DATABASE_URL=postgres://postgres:password@$DROPLET_IP:5432/personal-site tsx sync.ts'"
+    "sync": "tsx sync.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1025.0",
     "dotenv": "^16.4.5",
-    "postgres": "^3.4.4"
+    "postgres": "^3.4.4",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "dotenv-cli": "^11.0.0",
-    "tsx": "^4.19.2"
+    "dotenv-cli": "^11.0.0"
   }
 }

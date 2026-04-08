@@ -34,7 +34,7 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}:latest
 
-      - name: Deploy to droplet
+      - name: Deploy and Sync
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ vars.DROPLET_IP }}
@@ -44,3 +44,6 @@ jobs:
             cd /app
             docker compose -f docker-compose.prod.yaml pull
             docker compose -f docker-compose.prod.yaml up -d
+            # Use service name 'app' instead of container name 'app-1'
+            docker compose -f docker-compose.prod.yaml exec -T app npm run migrate
+            docker compose -f docker-compose.prod.yaml exec -T app npm run sync

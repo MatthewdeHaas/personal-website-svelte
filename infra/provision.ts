@@ -491,6 +491,26 @@ const setupDatabase = async (
   await ssh.dispose();
 };
 
+const syncDatabase = async (ip: string, deployKeyPath: string) => {
+  const ssh = new NodeSSH();
+  await ssh.connect({
+    host: ip,
+    username: "root",
+    privateKeyPath: deployKeyPath,
+  });
+
+  console.log("Running migrations and sync inside production...");
+
+  const res = await ssh.execCommand(
+    "cd /app && docker compose -f docker-compose.prod.yaml run --rm app npm run migrate && docker compose -f docker-compose.prod.yaml run --rm app npm run sync",
+  );
+
+  console.log(res.stdout);
+  if (res.stderr) console.error(res.stderr);
+
+  await ssh.dispose();
+};
+
 const main = async () => {
   await setupSpaces();
 
@@ -558,6 +578,7 @@ const main = async () => {
       "App container may not have started correctly. Check logs manually.",
     );
   }
+  await syncDatabase(ip, deployKeyPath);
 
   // Dispose ONLY after all commands are finished
   await ssh.dispose();
