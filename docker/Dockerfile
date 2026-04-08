@@ -11,10 +11,13 @@ RUN npm run build
 # Stage 2: runtime
 FROM node:22-alpine AS runtime
 WORKDIR /app
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+
+COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/db ./db
 COPY --from=builder /app/build ./build
+
+# Install root deps AND db deps
+RUN npm ci --omit=dev && cd db && npm install --omit=dev
 
 ENV NODE_ENV=production
 EXPOSE 3000

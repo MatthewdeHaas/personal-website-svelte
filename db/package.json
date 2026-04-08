@@ -3,17 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "migrate": "tsx migrate.ts",
-    "seed": "tsx seed.ts",
-    "sync": "tsx sync.ts"
+    "migrate": "npx tsx migrate.ts",
+    "seed": "npx tsx seed.ts",
+    "sync": "npx tsx sync.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1025.0",
     "dotenv": "^16.4.5",
     "postgres": "^3.4.4",
     "tsx": "^4.19.2"
-  },
-  "devDependencies": {
-    "dotenv-cli": "^11.0.0"
   }
 }
