@@ -76,14 +76,6 @@ const getMetadata = async (prefix: string) => {
 };
 
 const main = async () => {
-  console.log("Checking credentials...");
-  console.log("Access Key exists:", !!process.env.SPACES_ACCESS_KEY);
-  console.log("Secret Key exists:", !!process.env.SPACES_SECRET_KEY);
-
-  if (!process.env.SPACES_ACCESS_KEY || !process.env.SPACES_SECRET_KEY) {
-    throw new Error("Missing SPACES credentials in environment");
-  }
-
   const folders = await listFolders();
   console.log(`Found ${folders.length} album(s) in Spaces`);
 
