@@ -11,7 +11,6 @@ import {
 import { NodeSSH } from "node-ssh";
 import { join } from "path";
 import "dotenv/config";
-import crypto from "crypto";
 
 const REGION = "sfo3";
 const DROPLET_NAME = "personal-site";
@@ -28,10 +27,11 @@ const GITHUB_REPO = "MatthewdeHaas/personal-website-svelte";
 const BUCKET_NAME = "personal-site-media";
 const SPACES_ENDPOINT = `https://${REGION}.digitaloceanspaces.com`;
 
-const generatePassword = () => crypto.randomBytes(32).toString("base64url");
+const POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD;
+if (!POSTGRES_PASSWORD) throw new Error("POSTGRES_PASSWORD is not set");
 
-const POSTGRES_PASSWORD = generatePassword();
-const APP_DB_PASSWORD = generatePassword();
+const APP_DB_PASSWORD = process.env.APP_DB_PASSWORD;
+if (!APP_DB_PASSWORD) throw new Error("APP_DB_PASSWORD is not set");
 
 const token = process.env.DIGITALOCEAN_TOKEN;
 if (!token) throw new Error("DIGITALOCEAN_TOKEN is not set");
@@ -380,7 +380,12 @@ const attachVolume = async (volumeId: string, dropletId: number) => {
   console.log("Volume attached");
 };
 
-const setupEnv = async (ip: string, deployKeyPath: string) => {
+const setupEnv = async (
+  ip: string,
+  deployKeyPath: string,
+  postgresPassword: string,
+  appPassword: string,
+) => {
   const ssh = new NodeSSH();
   await ssh.connect({
     host: ip,
@@ -388,83 +393,86 @@ const setupEnv = async (ip: string, deployKeyPath: string) => {
     privateKeyPath: deployKeyPath,
   });
 
-  const env = [
-    `DATABASE_URL=postgres://app_user:${APP_DB_PASSWORD}@db:5432/personal-site`,
+  const envContent = [
+    `DATABASE_URL=postgres://app_user:${appPassword}@db:5432/personal-site`,
     `POSTGRES_DB=personal-site`,
     `POSTGRES_USER=postgres`,
-    `POSTGRES_PASSWORD=${POSTGRES_PASSWORD}`,
+    `POSTGRES_PASSWORD=${postgresPassword}`,
     `OBJECT_STORAGE_URL=https://${BUCKET_NAME}.${REGION}.digitaloceanspaces.com`,
   ].join("\n");
 
-  await ssh.execCommand(`echo "${env}" > /app/.env`);
+  // We wrap the content in a heredoc to prevent shell expansion of passwords
+  console.log("Writing .env file...");
+  const result = await ssh.execCommand(
+    `cat << 'EOF' > /app/.env\n${envContent}\nEOF`,
+  );
+
+  if (result.stderr) {
+    console.error("Error writing .env:", result.stderr);
+    throw new Error("Failed to write .env file");
+  }
+
   console.log("/app/.env written to droplet");
-  await ssh.dispose();
-};
-
-const startDocker = async (ip: string, keyPath: string) => {
-  const ssh = new NodeSSH();
-
-  await ssh.connect({
-    host: ip,
-    username: "root",
-    privateKeyPath: keyPath,
-  });
-
-  console.log("Starting Docker containers...");
-
-  await ssh.execCommand(`
-    cd /app &&
-    docker compose -f docker-compose.prod.yaml up -d
-  `);
-
   await ssh.dispose();
 };
 
 const setupDatabase = async (
   ip: string,
-  keyPath: string,
-  appDbPassword: string,
+  deployKeyPath: string,
+  appPassword: string,
 ) => {
   const ssh = new NodeSSH();
-
   await ssh.connect({
     host: ip,
     username: "root",
-    privateKeyPath: keyPath,
+    privateKeyPath: deployKeyPath,
   });
 
+  console.log("Starting db container...");
+  await ssh.execCommand(
+    "cd /app && docker compose -f docker-compose.prod.yaml up -d db",
+  );
+
+  await new Promise((r) => setTimeout(r, 5000));
+
   console.log("Waiting for Postgres to be ready...");
+  // Loop without the unused 'ready' variable to satisfy the linter
+  for (let i = 0; i < 30; i++) {
+    const result = await ssh.execCommand(
+      `docker exec app-db-1 pg_isready -U postgres`,
+    );
+    if (result.stdout.includes("accepting connections")) {
+      await new Promise((r) => setTimeout(r, 2000));
+      break;
+    }
+    if (i === 29) throw new Error("Postgres did not become ready in time");
+    await new Promise((r) => setTimeout(r, 3000));
+  }
 
-  await ssh.execCommand(`
-    until docker exec app-db-1 pg_isready -U postgres; do sleep 2; done
-  `);
+  console.log("Setting up app_user...");
+  const sqlCommands = [
+    // Removed unnecessary escapes: ESLint is happy with $$ in template literals
+    // as long as they aren't followed by {
+    `DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_user') THEN CREATE ROLE app_user LOGIN PASSWORD '${appPassword}'; END IF; END $$;`,
+    `GRANT ALL PRIVILEGES ON DATABASE "personal-site" TO app_user;`,
+    `GRANT ALL PRIVILEGES ON SCHEMA public TO app_user;`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;`,
+  ];
 
-  console.log("Configuring database security...");
+  for (const cmd of sqlCommands) {
+    // We use single quotes for the shell command to prevent the remote shell
+    // from interpreting the $$ itself.
+    const shellEscapedCmd = cmd.replace(/'/g, "'\\''");
+    const res = await ssh.execCommand(
+      `docker exec app-db-1 psql -U postgres -d postgres -c '${shellEscapedCmd}'`,
+    );
+    if (res.stderr && !res.stderr.includes("already exists"))
+      console.error(res.stderr);
+    if (res.stdout) console.log(res.stdout);
+  }
 
-  await ssh.execCommand(`
-		docker exec app-db-1 psql -U postgres <<'EOF'
-		CREATE USER app_user WITH PASSWORD '${appDbPassword}';
-
-		REVOKE ALL ON SCHEMA public FROM PUBLIC;
-
-		GRANT CONNECT ON DATABASE "personal-site" TO app_user;
-		GRANT USAGE ON SCHEMA public TO app_user;
-
-		GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
-
-		ALTER DEFAULT PRIVILEGES IN SCHEMA public
-		GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-		EOF
-`);
-
-  console.log("Disabling postgres login...");
-
-  await ssh.execCommand(`
-    docker exec app-db-1 psql -U postgres -c "
-    ALTER USER postgres WITH NOLOGIN;
-    "
-  `);
-
+  console.log("Database setup complete");
   await ssh.dispose();
 };
 
@@ -508,9 +516,10 @@ const main = async () => {
   if (!ip) throw new Error("Could not determine droplet IP");
 
   await setupDroplet(ip, deployKeyPath);
-  await setupEnv(ip, deployKeyPath);
-  await startDocker(ip, deployKeyPath);
+  await setupEnv(ip, deployKeyPath, POSTGRES_PASSWORD, APP_DB_PASSWORD);
+
   await setupDatabase(ip, deployKeyPath, APP_DB_PASSWORD);
+
   await setupDns(ip);
   await setGithubVariable("DROPLET_IP", ip);
 
