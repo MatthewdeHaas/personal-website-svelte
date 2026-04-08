@@ -148,6 +148,7 @@ const setupDroplet = async (ip: string, deployKeyPath: string) => {
     `mountpoint -q ${VOLUME_MOUNT} || mount /dev/sda ${VOLUME_MOUNT}`,
     `grep -q '/dev/sda' /etc/fstab || echo '/dev/sda ${VOLUME_MOUNT} ext4 defaults,nofail 0 2' >> /etc/fstab`,
     `mkdir -p ${VOLUME_MOUNT}/postgres`,
+    `chmod 700 ${VOLUME_MOUNT}/postgres`,
     `chown -R 999:999 ${VOLUME_MOUNT}/postgres`,
   ];
 
@@ -432,11 +433,13 @@ const setupDatabase = async (
   await ssh.execCommand(
     "cd /app && docker compose -f docker-compose.prod.yaml up -d db",
   );
+  await ssh.execCommand(
+    "docker exec -u root app-db-1 chown -R postgres:postgres /var/lib/postgresql/data",
+  );
 
   await new Promise((r) => setTimeout(r, 5000));
 
   console.log("Waiting for Postgres to be ready...");
-  // Loop without the unused 'ready' variable to satisfy the linter
   for (let i = 0; i < 30; i++) {
     const result = await ssh.execCommand(
       `docker exec app-db-1 pg_isready -U postgres`,
@@ -451,11 +454,17 @@ const setupDatabase = async (
 
   console.log("Setting up app_user...");
   const sqlCommands = [
-    // Removed unnecessary escapes: ESLint is happy with $$ in template literals
-    // as long as they aren't followed by {
     `DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_user') THEN CREATE ROLE app_user LOGIN PASSWORD '${appPassword}'; END IF; END $$;`,
     `GRANT ALL PRIVILEGES ON DATABASE "personal-site" TO app_user;`,
-    `GRANT ALL PRIVILEGES ON SCHEMA public TO app_user;`,
+
+    // 1. Grant usage and create rights on the schema itself
+    `GRANT USAGE, CREATE ON SCHEMA public TO app_user;`,
+
+    // 2. Make app_user the owner of the public schema
+    // (Crucial for SvelteKit/Drizzle/Prisma migrations)
+    `ALTER SCHEMA public OWNER TO app_user;`,
+
+    // 3. Ensure future objects are accessible
     `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;`,
     `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;`,
   ];
