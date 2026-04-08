@@ -16,8 +16,11 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/db ./db
 COPY --from=builder /app/build ./build
 
-# Install root deps AND db deps
-RUN npm ci --omit=dev && cd db && npm install --omit=dev
+# Use --ignore-scripts to prevent Husky from trying to run
+RUN npm pkg delete scripts.prepare && \
+    npm ci --omit=dev && \
+    cd db && \
+    npm install --omit=dev
 
 ENV NODE_ENV=production
 EXPOSE 3000
